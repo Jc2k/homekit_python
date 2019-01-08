@@ -18,6 +18,7 @@ class Device(gatt.Device):
     def __init__(self, *args, **kwargs):
         gatt.Device.__init__(self, *args, **kwargs, managed=False)
 
+        self.subscribers = collections.defaultdict(list)
         self.homekit_discovery_data = self.get_homekit_discovery_data()
 
     @property
@@ -63,6 +64,42 @@ class Device(gatt.Device):
                 self.services_resolved()
         except dbus.exceptions.DBusException as e:
             raise AccessoryNotFoundError('Unable to resolve device services + characteristics')
+
+    def subscribe(self, uuid, callback):
+        self.subscribers[uuid].append(callback)
+
+    def unsubscribe(self, uuid, callback):
+        self.subscribers[uuid].discard(callback)
+
+    def properties_changed(self, sender, changed_properties, invalidated_properties):
+        if 'ManufacturerData' in changed_properties:
+            data = self.get_homekit_discovery_data()
+
+            # Detect disconnected notification of state change
+            # Resets back to 1 after overflow, factory reset or firmware update
+            if data['gsn'] != self.homekit_discovery_data.get('gsn', None):
+                for sub in self.subscribers['gsn']:
+                    sub('gsn')
+
+            # Detect notification of config change - increments after firmware update
+            # Device may have different characteristics
+            if data['cn'] != self.homekit_discovery_data.get('cn', None):
+                for sub in self.subscribers['cn']:
+                    sub('cn')
+
+        return gatt.Device.properties_changed(self, sender, changed_properties, invalidated_properties)
+
+    def disconnect_succeeded(self):
+        for sub in self.subscribers['disconnect']:
+            sub('disconnect')
+
+    def characteristic_value_updated(self, characteristic, value):
+        if value != b'':
+            # We are only interested in in blank values
+            return
+
+        for subscriber in self.subscribers[characteristic.uuid]:
+            subscriber(characteristic.uuid)
 
     def characteristic_read_value_failed(self, characteristic, error):
         logger.debug('read failed: %s %s', characteristic, error)

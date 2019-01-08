@@ -6,6 +6,8 @@ import uuid
 import struct
 import dbus.exceptions
 from distutils.util import strtobool
+import threading
+import queue
 
 from homekit.controller.tools import AbstractPairing
 from homekit.exceptions import AccessoryNotFoundError
@@ -57,9 +59,34 @@ class BlePairing(AbstractPairing):
         # TODO implementation still missing
         pass
 
+    def _setup_events(self, characteristics, callback):
+        if not self.session:
+            self.session = BleSession(self.pairing_data)
+
+            self.monitor = threading.Thread(target=self.session.device.manager.run)
+            self.monitor.start()
+
+        self.session.device.subscribe('disconnect', callback)
+        self.session.device.subscribe('gsn', callback)
+        self.session.device.subscribe('cn', callback)
+
+        for (aid, iid) in characteristics:
+            fc, fc_id = self.session.find_characteristic_by_iid(iid)
+            fc.enable_notifications()
+            self.session.device.subscribe(fc.uuid, callback)
+
+    def iter_events(self, characteristics, max_events=-1, max_seconds=-1):
+        queue = queue.Queue()
+
+        self._setup_events(characteristics, callback)
+
+        while self.session:
+            char = queue.get()
+            yield char
+
     def get_events(self, characteristics, callback_fun, max_events=-1, max_seconds=-1):
-        # TODO implementation still missing
-        pass
+        for event in self.iter_events(characteristics, max_events, max_seconds):
+            callback_fun(event)
 
     def identify(self):
         # TODO implementation still missing
@@ -293,6 +320,7 @@ class BleSession(object):
 
     def close(self):
         self.device.disconnect()
+        self.device.manager.stop()
 
     def find_characteristic_by_iid(self, cid):
         return self.iid_map.get(cid, (None, None))
