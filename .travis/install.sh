@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 echo "OS: $TRAVIS_OS_NAME"
 
@@ -18,10 +17,17 @@ fi
 
 if [ "$TRAVIS_OS_NAME" == "osx" ]; then
     brew update
-    brew uninstall --ignore-dependencies python
-    brew install --ignore-dependencies https://raw.githubusercontent.com/Homebrew/homebrew-core/ec545d45d4512ace3570782283df4ecda6bb0044/Formula/python3.rb
-
+    # see https://github.com/pyenv/pyenv/wiki#suggested-build-environment for Mac OS X
+    brew install openssl readline sqlite3 xz zlib
+    openssl version
+    # pyenv is already installed on a test node
+    brew outdated pyenv || brew upgrade pyenv
+    pyenv install --list
+    pyenv install $PYTHON
+    pyenv shell $PYTHON
+    python --version
     python3 --version
+    pip --version
     pip3 --version
     pip3 install -r requirements_osx.txt
     pip3 install coveralls
