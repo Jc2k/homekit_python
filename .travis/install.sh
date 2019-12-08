@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 echo "OS: $TRAVIS_OS_NAME"
 
@@ -24,7 +25,7 @@ if [ "$TRAVIS_OS_NAME" == "osx" ]; then
     brew outdated pyenv || brew upgrade pyenv
     pyenv install --list
     pyenv install $PYTHON
-    pyenv shell $PYTHON
+    pyenv global system $PYTHON
     python --version
     python3 --version
     pip --version
